@@ -1,0 +1,9 @@
+# Build files
+build/
+cmake-build-*/
+
+# Compiled files
+*.o
+*.out
+*.a
+*.so
