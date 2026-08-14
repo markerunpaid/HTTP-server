@@ -1,4 +1,3 @@
-/*
 listen does the 3 way handshake, once completed it puts the connection into the queue, when accept is called the first connection is popped from the queue
 Server
 
@@ -58,5 +57,17 @@ sszie_t = signed integer used in posix so that it can handle the negative error 
 use non blocking calls - because with blocking we have to use 1000s of threads
 disable tcp_no delay - nagles (it stalls send untill all previous ack or buffer size is max seg size)
 reuse address - time wait solved
-reuse port - craziest, now we can use multiple different threads to listen in parallel, on the same port no, so accept is also parallelised, earlier connectins we accepted serially and then handelled parallely, now they are accepted and handeled both parellely
-*/
+reuse port - craziest, now we can use multiple different threads to listen in parallel, on the same port no, so accept is also parallelised, earlier we accepted connections serially and then handelled parallely, now they are accepted and handeled both parellely
+
+
+PHASE -2
+make calls non-blocking
+we have 2 choices
+1. one thread per client(blocking calls block the respective thread)
+- lot of threads as client increase
+- context switching
+- thread management
+- storage wastage
+2. event driven server(non blocking)
+- 1 thread handelling a large no of clients
+- multiple threads together handeling a very large no of clients

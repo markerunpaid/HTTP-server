@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <system_error>
 #include <iostream>
+#include <fcntl.h>
 
 class TCPsocket
 {
@@ -42,5 +43,9 @@ public:
 
     TCPsocket accept();
 
-    void set_reuse_addr(bool enable);
+    void set_reuse_addr(bool enable = true);
+
+    void set_non_blocking(bool enable = true);
+    
+    int native_handle() const noexcept { return fd_; }
 };

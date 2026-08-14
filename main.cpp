@@ -1,7 +1,12 @@
 #include "TCPsocket.hpp"
+#include "EPOLL.hpp"
 #include "HTTP_parser.hpp"
 #include "HTTPresponse.hpp"
 #include <iostream>
+#include <unordered_map>
+#include <vector>
+
+constexpr int MAX_EVENTS = 64;
 
 int main()
 {
@@ -11,36 +16,106 @@ int main()
         server.set_reuse_addr(true);
         server.bind(8080);
         server.listen(128);
+        server.set_non_blocking(true);
 
-        std::cout << "Server starting on http://localhost:8080...\n";
+        Epoll loop;
+        loop.add_fd(server.native_handle(), EPOLLIN);
+
+        std::cout << "Event-driven server running on http://localhost:8080...\n";
+
+        // Store active client sockets by their file descriptor
+        std::unordered_map<int, TCPsocket> clients;
+        struct epoll_event events[MAX_EVENTS];
 
         while (true)
         {
-            TCPsocket client = server.accept();
+            int num_events = loop.wait(events, MAX_EVENTS, -1);
 
-            char buffer[4096]{};
-            std::size_t bytes_received = client.receive(buffer, sizeof(buffer) - 1);
-            if (bytes_received == 0)
-                continue;
-
-            std::string request_str(buffer, bytes_received);
-            HTTPrequest request = HTTP_parser::parse(request_str);
-
-            HTTPresponse response;
-            std::cout<<"Client requested: "<<request.path()<<'\n';
-            if (request.path() == "/" || request.path() == "/hello")
+            for (int i = 0; i < num_events; ++i)
             {
-                response.set_status(HTTPresponse::HTTPStatus::OK);
-                response.set_body("<html><body><h1>Hello from Baseline C++ Server!</h1></body></html>");
-            }
-            else
-            {
-                response.set_status(HTTPresponse::HTTPStatus::NOT_FOUND);
-                response.set_body("<html><body><h1>404 Not Found</h1></body></html>");
-            }
+                int fd = events[i].data.fd;
 
-            std::string serialized_resp = response.serialize();
-            client.send(serialized_resp.data(), serialized_resp.size());
+                // 1. New incoming connection on listener socket
+                if (fd == server.native_handle())
+                {
+                    while (true)
+                    {
+                        try
+                        {
+                            TCPsocket client = server.accept();
+                            client.set_non_blocking(true);
+                            int client_fd = client.native_handle();
+
+                            loop.add_fd(client_fd, EPOLLIN);
+                            clients.emplace(client_fd, std::move(client));
+                        }
+                        catch (const std::system_error &e)
+                        {
+                            // EAGAIN or EWOULDBLOCK means no more incoming connections
+                            if (e.code().value() == EAGAIN || e.code().value() == EWOULDBLOCK)
+                                break;
+                            throw;
+                        }
+                    }
+                }
+                // 2. Data ready to read on existing client socket
+                else if (events[i].events & EPOLLIN)
+                {
+                    auto it = clients.find(fd);
+                    if (it == clients.end())
+                        continue;
+
+                    TCPsocket &client = it->second;
+                    char buffer[4096]{};
+                    std::size_t bytes_received = 0;
+
+                    try
+                    {
+                        bytes_received = client.receive(buffer, sizeof(buffer) - 1);
+                    }
+                    catch (const std::system_error &e)
+                    {
+                        if (e.code().value() == EAGAIN || e.code().value() == EWOULDBLOCK)
+                            continue;
+
+                        // Client error or drop
+                        loop.del_fd(fd);
+                        clients.erase(it);
+                        continue;
+                    }
+
+                    if (bytes_received == 0)
+                    {
+                        // Client closed connection
+                        loop.del_fd(fd);
+                        clients.erase(it);
+                        continue;
+                    }
+
+                    // Process request
+                    std::string request_str(buffer, bytes_received);
+                    HTTPrequest request = HTTP_parser::parse(request_str);
+
+                    HTTPresponse response;
+                    if (request.path() == "/" || request.path() == "/hello")
+                    {
+                        response.set_status(HTTPresponse::HTTPStatus::OK);
+                        response.set_body("<html><body><h1>Hello from Epoll Async Server!</h1></body></html>");
+                    }
+                    else
+                    {
+                        response.set_status(HTTPresponse::HTTPStatus::NOT_FOUND);
+                        response.set_body("<html><body><h1>404 Not Found</h1></body></html>");
+                    }
+
+                    std::string serialized_resp = response.serialize();
+                    client.send(serialized_resp.data(), serialized_resp.size());
+
+                    // Close connection after response (HTTP/1.1 short lived for now)
+                    loop.del_fd(fd);
+                    clients.erase(it);
+                }
+            }
         }
     }
     catch (const std::exception &e)

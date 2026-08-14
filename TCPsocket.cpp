@@ -121,3 +121,16 @@ void TCPsocket::set_reuse_addr(bool enable)
         throw std::system_error(errno, std::system_category(), "Failed to set SO_REUSEADDR");
     }
 }
+
+void TCPsocket::set_non_blocking(bool enable)
+{
+    int flags = fcntl(fd_, F_GETFL, 0);
+    if (flags == -1)
+    {
+        throw std::system_error(errno, std::system_category(), "fcntl F_GETFL failed");
+    }
+    if (fcntl(fd_, F_SETFL, flags | O_NONBLOCK) == -1)
+    {
+        throw std::system_error(errno, std::system_category(), "fcntl F_SETFL failed");
+    }
+}
