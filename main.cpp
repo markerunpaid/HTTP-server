@@ -93,8 +93,8 @@ int main()
                     }
 
                     // Process request
-                    std::string request_str(buffer, bytes_received);
-                    HTTPrequest request = HTTP_parser::parse(request_str);
+                    std::string_view request_view(buffer, bytes_received);
+                    HTTPrequest request = HTTP_parser::parse(request_view);
 
                     HTTPresponse response;
                     if (request.path() == "/" || request.path() == "/hello")

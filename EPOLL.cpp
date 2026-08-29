@@ -75,7 +75,7 @@ void Epoll::del_fd(int fd)
 
     if (::epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr) == -1)
     {
-        throw std::system_error(errno, std::system_category(), "epoll_ctl MOD failed");
+        throw std::system_error(errno, std::system_category(), "epoll_ctl DEL failed");
     }
 }
 

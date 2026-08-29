@@ -71,3 +71,12 @@ we have 2 choices
 2. event driven server(non blocking)
 - 1 thread handelling a large no of clients
 - multiple threads together handeling a very large no of clients
+
+
+PHASE - 3
+1. make copy free
+- http request - use string views
+- string_view vs const string& = when f("hi"), then string view simply takes the pointer, while const ref first constructs a temporary string object and takes reference to that
+- no more istringstream - it does deep copy of the string, as it need a mutable buffer
+2. use vector of Header instead of unordered map, more efficient
+
