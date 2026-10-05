@@ -73,7 +73,7 @@ we have 2 choices
 - multiple threads together handeling a very large no of clients
 
 
-PHASE - 3
+PHASE - 3 (HTTPrequest and HTTP_parser zero allocation)
 1. make copy free
 - http request - use string views
 - string_view vs const string& = when f("hi"), then string view simply takes the pointer, while const ref first constructs a temporary string object and takes reference to that
