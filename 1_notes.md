@@ -54,7 +54,7 @@ Wake up accept()
 sszie_t = signed integer used in posix so that it can handle the negative error code returned
 
 
-use non blocking calls - because with blocking we have to use 1000s of threads
+use non blocking calls - because with blocking we have to use 1000s of threads(1 for each client)
 disable tcp_no delay - nagles (it stalls send untill all previous ack or buffer size is max seg size)
 reuse address - time wait solved
 reuse port - craziest, now we can use multiple different threads to listen in parallel, on the same port no, so accept is also parallelised, earlier we accepted connections serially and then handelled parallely, now they are accepted and handeled both parellely
