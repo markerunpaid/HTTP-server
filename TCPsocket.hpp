@@ -39,7 +39,7 @@ public:
     std::size_t receive(void *buffer, std::size_t size, int flags = 0);
 
     // data will be sent to this->fd
-    std::size_t send(const void *buffer, std::size_t size, int flags = 0);
+    std::size_t send(const void *buffer, std::size_t size, int flags = MSG_NOSIGNAL);   //set default flags to ignore SIGPIPE signal
 
     TCPsocket accept();
 

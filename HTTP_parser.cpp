@@ -38,13 +38,13 @@ HTTPrequest HTTP_parser::parse(std::string_view src)
 
     //* method path and version from the request line
     std::string_view req_line = src.substr(0, line_end);
-    size_t m_end = src.find(' ');
-    size_t p_end = src.find(' ', m_end + 1);
+    size_t m_end = req_line.find(' ');
+    size_t p_end = req_line.find(' ', m_end + 1);
     if (m_end == std::string_view::npos || p_end == std::string_view::npos)
         return {HTTPrequest::HTTPmethod::UNKNOWN, "", "", {}};
-    std::string_view m = src.substr(0, m_end);
-    std::string_view path = src.substr(m_end + 1, p_end - m_end - 1);
-    std::string_view version = src.substr(p_end + 1);
+    std::string_view m = req_line.substr(0, m_end);
+    std::string_view path = req_line.substr(m_end + 1, p_end - m_end - 1);
+    std::string_view version = req_line.substr(p_end + 1);
 
     HTTPrequest::HTTPmethod method{parse_method(m)};
 
@@ -93,7 +93,7 @@ HTTPrequest HTTP_parser::parse(std::string_view src)
                 value.remove_suffix(1);
             }
 
-            if (!key.empty() && value.empty()) //* a copy will take place and it is intended as httprequest object will own the request
+            if (!key.empty()) //* a copy will take place and it is intended as httprequest object will own the request
                 headers.push_back({key, value});
         }
         header_start = next_rn + 2;

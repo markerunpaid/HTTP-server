@@ -129,7 +129,8 @@ void TCPsocket::set_non_blocking(bool enable)
     {
         throw std::system_error(errno, std::system_category(), "fcntl F_GETFL failed");
     }
-    if (fcntl(fd_, F_SETFL, flags | O_NONBLOCK) == -1)
+    flags = enable ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK);
+    if (fcntl(fd_, F_SETFL, flags) == -1)
     {
         throw std::system_error(errno, std::system_category(), "fcntl F_SETFL failed");
     }
