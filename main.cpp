@@ -1,4 +1,5 @@
 #include "TCPsocket.hpp"
+#include "Connection.hpp"
 #include "EPOLL.hpp"
 #include "HTTP_parser.hpp"
 #include "HTTPresponse.hpp"
@@ -23,8 +24,8 @@ int main()
 
         std::cout << "Event-driven server running on http://localhost:8080...\n";
 
-        // Store active client sockets by their file descriptor
-        std::unordered_map<int, TCPsocket> clients;
+        // Store active client socket Connections
+        std::unordered_map<int, Connection> clients;
         struct epoll_event events[MAX_EVENTS];
 
         while (true)
@@ -65,14 +66,26 @@ int main()
                     if (it == clients.end())
                         continue;
 
-                    TCPsocket &client = it->second;
-                    char buffer[4096]{};
-                    std::size_t bytes_received = 0;
+                    Connection &conn = it->second;
+                    TCPsocket &client = it->second.sock;
 
+                    // request buffer is full, but still no complete request(very long req, drop it)
+                    if (conn.rlen == BUF_SIZE)
+                    {
+                        loop.del_fd(fd);
+                        clients.erase(it); // Client owns the socket, so erasing from here, delets that socket ==> closes the connection
+                        continue;
+                        // when the request size exceeds buffer, the server abruptly delets the socket(closes it)
+                        // when you close a connection which has data in it's recieved buffer, the kernel sends a RST to the client rather than a polite FIN
+                    }
+
+                    // read bytes
+                    std::size_t bytes_received = it->second.rlen;
                     try
                     {
-                        bytes_received = client.receive(buffer, sizeof(buffer) - 1);
+                        bytes_received = client.receive(conn.rbuf + conn.rlen, BUF_SIZE - conn.rlen);
                     }
+                    // handle error
                     catch (const std::system_error &e)
                     {
                         if (e.code().value() == EAGAIN || e.code().value() == EWOULDBLOCK)
@@ -83,17 +96,29 @@ int main()
                         clients.erase(it);
                         continue;
                     }
-
+                    // no bytes recieved (Client closed connection)
                     if (bytes_received == 0)
                     {
-                        // Client closed connection
                         loop.del_fd(fd);
                         clients.erase(it);
                         continue;
                     }
 
+                    // update the valid bytes length
+                    conn.rlen += bytes_received;
+
+                    // check if complete request present
+                    FrameResult f_res = HTTP_parser::frame(conn.rbuf);
+
+                    // incomplete do more reading
+                    if (f_res.status == FrameStatus::Incomplete)
+                    {
+                        continue;
+                    }
+                    // complete, thus process
+
                     // Process request
-                    std::string_view request_view(buffer, bytes_received);
+                    std::string_view request_view(conn.rbuf, f_res.consumed);
                     HTTPrequest request = HTTP_parser::parse(request_view);
 
                     HTTPresponse response;

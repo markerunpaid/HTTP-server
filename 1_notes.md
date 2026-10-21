@@ -60,7 +60,7 @@ reuse address - time wait solved
 reuse port - craziest, now we can use multiple different threads to listen in parallel, on the same port no, so accept is also parallelised, earlier we accepted connections serially and then handelled parallely, now they are accepted and handeled both parellely
 
 
-PHASE -2
+### PHASE -2
 make calls non-blocking
 we have 2 choices
 1. one thread per client(blocking calls block the respective thread)
@@ -73,10 +73,24 @@ we have 2 choices
 - multiple threads together handeling a very large no of clients
 
 
-PHASE - 3 (HTTPrequest and HTTP_parser zero allocation)
+### PHASE - 3 (HTTPrequest and HTTP_parser zero allocation)
 1. make copy free
 - http request - use string views
 - string_view vs const string& = when f("hi"), then string view simply takes the pointer, while const ref first constructs a temporary string object and takes reference to that
 - no more istringstream - it does deep copy of the string, as it need a mutable buffer
 2. use vector of Header instead of unordered map, more efficient
 
+
+### 20-10-26 Per client buffer(we name this connection struct)
+- right now the each client is just a socket in the map maintained by server
+- partial reads and right need to maintain a different states for each client
+- for this we create a struct for each client
+- connection struct - TCPsocket object(it owns this, the socket is moved into this), buffer, how many bytes in that buffer is valid
+
+### 21-10-26
+- we need to identify if the request buffer holds a complete request at any moment
+- For this, we create a simple struct, frame result, contains a bool (T/F) and the length of the request
+- right now a request is read, when it's complete its processed and then the socket is discared, and a new socket is created for another request
+- what if a client sends 2 request and they are small enough such that the 2nd request is read along with the 1st in the same buffer, if we discard after processing 1st req 2nd will get lost, we will fix this in next pipelining stage
+
+### 21-10-26

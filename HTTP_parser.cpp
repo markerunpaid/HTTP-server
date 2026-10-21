@@ -102,3 +102,14 @@ HTTPrequest HTTP_parser::parse(std::string_view src)
 
     return HTTPrequest(method, path, version, std::move(headers), body); //* header would anyways be destroyed after the function call to parser returns, so better utilize that
 }
+
+FrameResult HTTP_parser::frame(std::string_view buf)
+{
+    std::size_t req_end = buf.find("\r\n\r\n");
+    if (req_end == std::string::npos)
+    {
+        return {FrameStatus::Incomplete, 0};
+    }
+
+    return {FrameStatus::Complete, req_end + 4};
+}
