@@ -88,7 +88,7 @@ std::size_t TCPsocket::receive(void *buffer, std::size_t size, int flags) // no 
         {
             continue;
         }
-        throw ::std::system_error(errno, std::system_category(), "Failed to receive");
+        throw ::std::system_error(errno, std::system_category(), "Failed to receive"); // we catch these in main loop
     }
 }
 
@@ -111,6 +111,58 @@ std::size_t TCPsocket::send(const void *buffer, std::size_t size, int flags)
     }
 
     return bytes_sent;
+}
+
+IoResult TCPsocket::try_send(const void *buffer, std::size_t size)
+{
+    while (true)
+    {
+        ssize_t sent = ::send(fd_, static_cast<const char *>(buffer), size, MSG_NOSIGNAL);
+
+        if (sent >= 0)
+        {
+            return {IoStatus::Ok, static_cast<size_t>(sent), 0};
+        }
+        else if (errno == EINTR)
+        {
+            continue;
+        }
+        else if (errno == EAGAIN || errno == EWOULDBLOCK)
+        {
+            return {IoStatus::Blocked, 0, errno};
+        }
+        else
+            return {IoStatus::Error, 0, errno};
+    }
+}
+
+IoResult TCPsocket::try_recv(void *buffer, std::size_t size)
+{
+    while (true)
+    {
+        ssize_t bytes_recieved = ::recv(fd_, static_cast<char *>(buffer), size, 0);
+
+        if (bytes_recieved == 0)
+        {
+            return {IoStatus::Closed, 0, 0};
+        }
+        else if (bytes_recieved > 0)
+        {
+            return {IoStatus::Ok, static_cast<size_t>(bytes_recieved), 0};
+        }
+        else if (errno == EINTR)
+        {
+            continue;
+        }
+        else if (errno == EAGAIN || errno == EWOULDBLOCK)
+        {
+            return {IoStatus::Blocked, 0, errno};
+        }
+        else
+        {
+            return {IoStatus::Error, 0, errno};
+        }
+    }
 }
 
 void TCPsocket::set_reuse_addr(bool enable)

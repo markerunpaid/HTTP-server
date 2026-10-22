@@ -25,3 +25,5 @@ For both errors, the underlying TCP connection is completely dead. Your network 
 2. Close Socket: Call close(sockfd) to release OS kernel resources.
 3. Unregister Event Loop: Remove the socket from your event loop (epoll, kqueue, or select).
 4. Clean Session State: Free memory buffers and notify application layers of the disconnection.
+
+one naive way to deal with EAGAIN EWOULDBLOCK is to keep looping until the socket is ready to read/write again, but this is called busy waiting, instead the smarter approach is to put the socket into epoll (EPOLLIN/EPOLLOUT) and let epoll notify you when the socket is ready

@@ -7,6 +7,22 @@
 #include <system_error>
 #include <iostream>
 #include <fcntl.h>
+#include <cstddef>
+
+enum class IoStatus
+{
+    Ok,
+    Blocked,
+    Closed,
+    Error
+};
+
+struct IoResult
+{
+    IoStatus status{};
+    size_t bytes{};
+    int errCode{};
+};
 
 class TCPsocket
 {
@@ -39,13 +55,19 @@ public:
     std::size_t receive(void *buffer, std::size_t size, int flags = 0);
 
     // data will be sent to this->fd
-    std::size_t send(const void *buffer, std::size_t size, int flags = MSG_NOSIGNAL);   //set default flags to ignore SIGPIPE signal
+    std::size_t send(const void *buffer, std::size_t size, int flags = MSG_NOSIGNAL); // set default flags to ignore SIGPIPE signal
+
+    // try send (non-throwing)
+    IoResult try_send(const void *buffer, std::size_t size) noexcept;
+
+    // try_recv(non-throwing)
+    IoResult try_recv(void *buffer, std::size_t size) noexcept;
 
     TCPsocket accept();
 
     void set_reuse_addr(bool enable = true);
 
     void set_non_blocking(bool enable = true);
-    
+
     int native_handle() const noexcept { return fd_; }
 };

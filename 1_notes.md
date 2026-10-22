@@ -93,4 +93,11 @@ we have 2 choices
 - right now a request is read, when it's complete its processed and then the socket is discared, and a new socket is created for another request
 - what if a client sends 2 request and they are small enough such that the 2nd request is read along with the 1st in the same buffer, if we discard after processing 1st req 2nd will get lost, we will fix this in next pipelining stage
 
-### 21-10-26
+### 22-10-26 minimal throwing send and recv
+- a throw and catching it is much more costly than handeling the return value, moreover eagain/ewouldblock happen every now and then so we will remove throw from them in send/recv
+- 
+
+### how send works
+- when we call send(fd, buffer, len, flags), os shifts form user mode to kernel mode, accquires the send_buff lock, and copies the bytes user space memory to the kernel buffer
+- now tcp comes into play, and our work is done(application layer), we can safely assume that once the data is pushed into the kernel buffer, it would be sent to the the client on the other side(ack, retransmission, timouts etc are all handled by TCP)
+
