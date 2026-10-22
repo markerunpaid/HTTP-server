@@ -60,68 +60,28 @@ void TCPsocket::listen(int backlog)
     std::cout << "Listening...\n";
 }
 
-TCPsocket TCPsocket::accept()
+std::optional<TCPsocket> TCPsocket::accept(int &err) noexcept
 {
     // accept will create the new socket and return the file descriptor
-    int client_fd = ::accept(fd_, nullptr, nullptr);
+    int client_fd = ::accept4(fd_, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC); // directly create non-blocking socket
     if (client_fd == -1)
     {
-        throw std::system_error(errno, std::system_category(), "Failed to accept");
+        err = errno;
+        return std::nullopt;
     }
-    std::cout << "Client connected\n";
+    err = 0;
     return TCPsocket(client_fd); // this will be moved into the client socket using the move constructor/assignment
 }
 
-// EINTR means the recv system call was interrupted
-std::size_t TCPsocket::receive(void *buffer, std::size_t size, int flags) // no need to repeat default arguments
-{
-
-    while (true)
-    {
-        ssize_t bytes_received = ::recv(fd_, buffer, size, flags);
-
-        if (bytes_received >= 0)
-        {
-            return static_cast<size_t>(bytes_received);
-        }
-        if (errno == EINTR)
-        {
-            continue;
-        }
-        throw ::std::system_error(errno, std::system_category(), "Failed to receive"); // we catch these in main loop
-    }
-}
-
-std::size_t TCPsocket::send(const void *buffer, std::size_t size, int flags)
-{
-    size_t bytes_sent = 0;
-    const char *ptr = static_cast<const char *>(buffer);
-    while (bytes_sent < size)
-    {
-        ssize_t sent = ::send(fd_, ptr + bytes_sent, size - bytes_sent, flags); // ssize_t is signed
-
-        if (sent == -1)
-        {
-            if (errno == EINTR)
-                continue;
-            throw std::system_error(errno, std::system_category(), "Failed to send");
-        }
-
-        bytes_sent += static_cast<size_t>(sent);
-    }
-
-    return bytes_sent;
-}
-
-IoResult TCPsocket::try_send(const void *buffer, std::size_t size)
+IoResult TCPsocket::send(const void *buffer, std::size_t size)
 {
     while (true)
     {
-        ssize_t sent = ::send(fd_, static_cast<const char *>(buffer), size, MSG_NOSIGNAL);
+        ssize_t bytes_sent = ::send(fd_, static_cast<const char *>(buffer), size, MSG_NOSIGNAL);
 
-        if (sent >= 0)
+        if (bytes_sent >= 0)
         {
-            return {IoStatus::Ok, static_cast<size_t>(sent), 0};
+            return {IoStatus::Ok, static_cast<size_t>(bytes_sent), 0};
         }
         else if (errno == EINTR)
         {
@@ -136,7 +96,7 @@ IoResult TCPsocket::try_send(const void *buffer, std::size_t size)
     }
 }
 
-IoResult TCPsocket::try_recv(void *buffer, std::size_t size)
+IoResult TCPsocket::recv(void *buffer, std::size_t size)
 {
     while (true)
     {

@@ -6,7 +6,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <vector>
-
+#include <cstring>
 constexpr int MAX_EVENTS = 64;
 
 int main()
@@ -41,27 +41,56 @@ int main()
                 {
                     while (true)
                     {
-                        try
-                        {
-                            TCPsocket client = server.accept();
-                            client.set_non_blocking(true);
-                            int client_fd = client.native_handle();
 
-                            loop.add_fd(client_fd, EPOLLIN);
-                            clients.emplace(client_fd, std::move(client));
-                        }
-                        catch (const std::system_error &e)
+                        int e = 0;
+                        auto client = server.accept(e);
+
+                        if (!client)
                         {
                             // EAGAIN or EWOULDBLOCK means no more incoming connections
-                            if (e.code().value() == EAGAIN || e.code().value() == EWOULDBLOCK)
+                            if (e == EAGAIN || e == EWOULDBLOCK)
                                 break;
-                            throw;
+                            // try again
+                            if (e == EINTR || e == ECONNABORTED)
+                                continue;
+                            std::cerr << "accept failed: " << std::strerror(e) << '\n';
+                            break; // e.g. EMFILE: keep serving existing clients
                         }
+
+                        //! rn
+                        int small = 4096;
+                        setsockopt(client->native_handle(), SOL_SOCKET, SO_SNDBUF, &small, sizeof(small));
+
+                        int client_fd = client->native_handle();
+
+                        loop.add_fd(client_fd, EPOLLIN);
+                        clients.emplace(client_fd, std::move(*client));
                     }
                 }
-                // 2. Data ready to read on existing client socket
+                // 2. client writable again
+                else if (events[i].events & EPOLLOUT)
+                {
+                    //! client sanity check
+                    auto it = clients.find(fd);
+                    if (it == clients.end())
+                        continue;
+
+                    Connection &conn = it->second;
+
+                    // still blocked
+                    if (conn.flush() == FlushResult::Blocked)
+                    {
+                        continue;
+                    }
+                    // done or error
+                    loop.del_fd(fd);
+                    clients.erase(it);
+                }
+                // 3. Data ready to read on existing client socket
                 else if (events[i].events & EPOLLIN)
                 {
+
+                    //! client sanity check
                     auto it = clients.find(fd);
                     if (it == clients.end())
                         continue;
@@ -69,55 +98,38 @@ int main()
                     Connection &conn = it->second;
                     TCPsocket &client = it->second.sock;
 
-                    // request buffer is full, but still no complete request(very long req, drop it)
+                    //! check if read buffer is full
                     if (conn.rlen == BUF_SIZE)
-                    {
+                    { // request buffer is full, but still no complete request(very long req, drop it)
                         loop.del_fd(fd);
                         clients.erase(it); // Client owns the socket, so erasing from here, delets that socket ==> closes the connection
                         continue;
-                        // when the request size exceeds buffer, the server abruptly delets the socket(closes it)
+                        // when the request size exceeds buffer, the server abruptly deletes the socket(closes it)
                         // when you close a connection which has data in it's recieved buffer, the kernel sends a RST to the client rather than a polite FIN
                     }
 
-                    // read bytes
-                    std::size_t bytes_received = it->second.rlen;
-                    try
-                    {
-                        bytes_received = client.receive(conn.rbuf + conn.rlen, BUF_SIZE - conn.rlen);
-                    }
-                    // handle error
-                    catch (const std::system_error &e)
-                    {
-                        if (e.code().value() == EAGAIN || e.code().value() == EWOULDBLOCK)
-                            continue;
-
-                        // Client error or drop
-                        loop.del_fd(fd);
-                        clients.erase(it);
+                    //! read request
+                    IoResult r = client.recv(conn.rbuf + conn.rlen, BUF_SIZE - conn.rlen);
+                    if (r.status == IoStatus::Blocked) // retry later
                         continue;
-                    }
-                    // no bytes recieved (Client closed connection)
-                    if (bytes_received == 0)
+                    if (r.status != IoStatus::Ok) // Closed or Error
                     {
                         loop.del_fd(fd);
                         clients.erase(it);
                         continue;
                     }
-
                     // update the valid bytes length
-                    conn.rlen += bytes_received;
+                    conn.rlen += r.bytes;
 
-                    // check if complete request present
+                    //! check for complete request
                     FrameResult f_res = HTTP_parser::frame(conn.rbuf);
-
                     // incomplete do more reading
                     if (f_res.status == FrameStatus::Incomplete)
                     {
                         continue;
                     }
-                    // complete, thus process
 
-                    // Process request
+                    //! process complete request
                     std::string_view request_view(conn.rbuf, f_res.consumed);
                     HTTPrequest request = HTTP_parser::parse(request_view);
 
@@ -134,11 +146,42 @@ int main()
                     }
 
                     std::string serialized_resp = response.serialize();
-                    client.send(serialized_resp.data(), serialized_resp.size());
 
-                    // Close connection after response (HTTP/1.1 short lived for now)
-                    loop.del_fd(fd);
-                    clients.erase(it);
+                    //! check if response exceed wbuff size
+                    if (serialized_resp.size() > BUF_SIZE)
+                    {
+                        loop.del_fd(fd);
+                        clients.erase(fd);
+                        continue;
+                    }
+
+                    //! copy response into connection's wbuff
+                    std::memcpy(conn.wbuf + conn.woff, serialized_resp.data(), serialized_resp.size());
+                    conn.wlen += serialized_resp.size();
+                    conn.woff = 0;
+
+                    //! send response
+                    switch (conn.flush())
+                    {
+                    case FlushResult::Blocked:
+                        loop.mod_fd(fd, EPOLLOUT); // stop watching reads, wait until writable
+                        break;
+                    default: //!  close connection (only 1 request-response per connection)
+
+                        loop.del_fd(fd);
+                        clients.erase(it);
+                        break;
+                    }
+                }
+                // error events, if not sockets not deleted them, they would repeat again and again
+                else if (events[i].events & (EPOLLERR | EPOLLHUP))
+                {
+                    auto it = clients.find(fd);
+                    if (it != clients.end())
+                    {
+                        loop.del_fd(fd);
+                        clients.erase(it);
+                    }
                 }
             }
         }

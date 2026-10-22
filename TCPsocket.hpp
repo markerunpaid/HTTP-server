@@ -8,6 +8,7 @@
 #include <iostream>
 #include <fcntl.h>
 #include <cstddef>
+#include <optional>
 
 enum class IoStatus
 {
@@ -51,19 +52,13 @@ public:
 
     void listen(int backlog = 10);
 
-    // data will be recieved from this->fd
-    std::size_t receive(void *buffer, std::size_t size, int flags = 0);
+    // send size number of bytes from buffer to member's fd
+    IoResult send(const void *buffer, std::size_t size) noexcept;
 
-    // data will be sent to this->fd
-    std::size_t send(const void *buffer, std::size_t size, int flags = MSG_NOSIGNAL); // set default flags to ignore SIGPIPE signal
+    // recieve size number of bytes into buffer from member's fd
+    IoResult recv(void *buffer, std::size_t size) noexcept;
 
-    // try send (non-throwing)
-    IoResult try_send(const void *buffer, std::size_t size) noexcept;
-
-    // try_recv(non-throwing)
-    IoResult try_recv(void *buffer, std::size_t size) noexcept;
-
-    TCPsocket accept();
+    std::optional<TCPsocket> accept(int &err) noexcept;
 
     void set_reuse_addr(bool enable = true);
 

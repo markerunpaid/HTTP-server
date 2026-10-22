@@ -95,7 +95,24 @@ we have 2 choices
 
 ### 22-10-26 minimal throwing send and recv
 - a throw and catching it is much more costly than handeling the return value, moreover eagain/ewouldblock happen every now and then so we will remove throw from them in send/recv
-- 
+
+### 22-10-26 make accept non-throwing
+
+### 22-10-26 partial sends
+How do we handle this
+
+a client makes a request, we create a response
+
+write it into conn.buff
+
+and flush it
+
+we write some of the response and then socket gets blocked
+
+next time we recieve a request from the same client and we synthesise a response
+
+now if we overwrite the wbuf then we will loose the last unsent response?
+- When flush() hits Blocked, it re-registers the socket for EPOLLOUT only, we do not listen to any new request until the response is completely written
 
 ### how send works
 - when we call send(fd, buffer, len, flags), os shifts form user mode to kernel mode, accquires the send_buff lock, and copies the bytes user space memory to the kernel buffer

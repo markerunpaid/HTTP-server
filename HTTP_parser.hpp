@@ -13,8 +13,8 @@ enum class FrameStatus
 
 struct FrameResult
 {
-    FrameStatus status{};
-    std::size_t consumed{};
+    FrameStatus status{};   // complete/incomplete
+    std::size_t consumed{}; // length of request
 };
 
 class HTTP_parser

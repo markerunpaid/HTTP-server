@@ -10,6 +10,7 @@ add_executable(server
     TCPsocket.cpp
     EPOLL.cpp
     HTTP_parser.cpp
+    Connection.cpp
 )
 
 target_compile_options(server PRIVATE -Wall -Wextra)
